@@ -137,10 +137,10 @@ jobs:
             MACHINE=$(readelf -h "$SO" | awk -F': ' '/Machine:/{print $2}' | tr -d ' ')
             echo "Machine: $MACHINE"
             case "$ABI:$MACHINE" in
-              arm64-v8a:AARCH64)  echo "OK: ABI matches" ;;
-              armeabi-v7a:ARM)    echo "OK: ABI matches" ;;
-              x86:I386)           echo "OK: ABI matches" ;;
-              x86_64:X86-64)      echo "OK: ABI matches" ;;
+              arm64-v8a:AArch64|arm64-v8a:AARCH64)             echo "OK: ABI matches" ;;
+              armeabi-v7a:ARM|armeabi-v7a:ARMv7)                echo "OK: ABI matches" ;;
+              x86:Intel80386|x86:I386|x86:80386)                echo "OK: ABI matches" ;;
+              x86_64:AdvancedMicro*|x86_64:X86-64|x86_64:X8664) echo "OK: ABI matches" ;;
               *) echo "WARN: ABI ($ABI) and Machine ($MACHINE) mismatch" ;;
             esac
             # 6. Permissions
