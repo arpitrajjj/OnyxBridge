@@ -201,6 +201,31 @@ jobs:
       # ----------------------------------------------------------------
       # Release (only when a tag v* is pushed)
       # ----------------------------------------------------------------
+      - name: Prepare release bundle
+        if:   startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          cd artifacts
+          # Per-ABI .so files with unique names so they don't overwrite each other
+          for ABI in $TARGET_ABIS; do
+            cp "lib/$ABI/$LIB_NAME" "libonyxbridge-$ABI.so"
+            chmod 755 "libonyxbridge-$ABI.so"
+          done
+          # Single archive preserving jniLibs structure for direct drop-in
+          mkdir -p release-bundle/jniLibs
+          for ABI in $TARGET_ABIS; do
+            mkdir -p "release-bundle/jniLibs/$ABI"
+            cp "lib/$ABI/$LIB_NAME" "release-bundle/jniLibs/$ABI/$LIB_NAME"
+            chmod 755 "release-bundle/jniLibs/$ABI/$LIB_NAME"
+          done
+          mkdir -p release-bundle/include
+          cp include/*.h release-bundle/include/
+          cp METADATA.yaml AndroidManifest.xml release-bundle/
+          tar -czf OnyxBridge-${{ github.ref_name }}.tar.gz \
+              -C release-bundle jniLibs include METADATA.yaml AndroidManifest.xml
+          zip -r -q OnyxBridge-${{ github.ref_name }}.zip release-bundle
+          ls -la
+
       - name: Create GitHub Release on tag
         if:   startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
@@ -208,14 +233,16 @@ jobs:
           name: OnyxBridge ${{ github.ref_name }}
           generate_release_notes: true
           files: |
-            artifacts/lib/arm64-v8a/libonyxbridge.so
-            artifacts/lib/armeabi-v7a/libonyxbridge.so
-            artifacts/lib/x86/libonyxbridge.so
-            artifacts/lib/x86_64/libonyxbridge.so
+            artifacts/OnyxBridge-${{ github.ref_name }}.tar.gz
+            artifacts/OnyxBridge-${{ github.ref_name }}.zip
+            artifacts/libonyxbridge-arm64-v8a.so
+            artifacts/libonyxbridge-armeabi-v7a.so
+            artifacts/libonyxbridge-x86.so
+            artifacts/libonyxbridge-x86_64.so
+            artifacts/METADATA.yaml
             artifacts/include/onyxbridge.h
             artifacts/include/permission_manager.h
             artifacts/include/toast_helper.h
-            artifacts/METADATA.yaml
 
       - name: Workflow summary
         if:   always()
