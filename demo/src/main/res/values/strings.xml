@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OnyxBridge Demo</string>
+    <string name="subtitle">Native C++ JNI Bridge — SMS Permissions</string>
+    <string name="status_label">STATUS</string>
+    <string name="btn_request">Request SMS Permissions</string>
+    <string name="btn_refresh">Refresh Status</string>
+    <string name="btn_toast">Show Toast from C++</string>
+    <string name="version_fmt">OnyxBridge v%s</string>
+</resources>
