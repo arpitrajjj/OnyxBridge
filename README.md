@@ -30,8 +30,10 @@ OnyxBridge bundles a C++ JNI library (`libonyxbridge.so`) with a Java wrapper cl
 - **Multi-architecture support** — single CMake config produces a `.so` for each Android ABI.
 - **Clean modular structure** with separate headers for permission handling and Toast helpers.
 - **Java wrapper class** (`OnyxBridge.java`) exposing a typed API on top of native methods.
-- **Full Android Studio project** — open and build directly from the IDE.
-- **GitHub Actions CI/CD** — builds all 4 ABIs on every push, validates the `.so` files, uploads build artifacts, and creates a release when a tag is pushed.
+- **Full Android Studio project** — multi-module Gradle project (library + demo).
+- **Demo APK** — minimal Android app demonstrating OnyxBridge usage, built and signed in CI.
+- **Integration Guide** — step-by-step instructions for injecting OnyxBridge into an existing APK (no source) via apktool + smali.
+- **GitHub Actions CI/CD** — builds all 4 ABIs on every push, validates the `.so` files, builds a demo APK, uploads build artifacts, and creates a release when a tag is pushed.
 
 ---
 
@@ -55,25 +57,35 @@ This covers ~99% of active Android devices.
 OnyxBridge/
 ├── .github/
 │   └── workflows/
-│       └── build.yml              # CI: build all ABIs, validate, release on tag
-├── app/
-│   ├── build.gradle               # Module: com.android.application
+│       └── build.yml              # CI: build .so + demo APK, validate, release on tag
+├── app/                            # Library module (com.android.library)
+│   ├── build.gradle
 │   ├── proguard-rules.pro
+│   ├── consumer-rules.pro
 │   └── src/main/
-│       ├── AndroidManifest.xml    # SMS permission declarations
+│       ├── AndroidManifest.xml
 │       ├── cpp/                   # Native C++ source
 │       │   ├── CMakeLists.txt
-│       │   ├── onyxbridge.h
-│       │   ├── onyxbridge.cpp       # JNI entry points
-│       │   ├── permission_manager.h
-│       │   ├── permission_manager.cpp
-│       │   ├── toast_helper.h
-│       │   └── toast_helper.cpp
+│       │   ├── onyxbridge.h / onyxbridge.cpp
+│       │   ├── permission_manager.h / permission_manager.cpp
+│       │   └── toast_helper.h / toast_helper.cpp
 │       └── java/com/onyx/bridge/
 │           ├── OnyxBridge.java           # Java wrapper class
 │           └── OnyxPermissionCallback.java
+├── demo/                           # Demo app module (com.android.application)
+│   ├── build.gradle
+│   ├── proguard-rules.pro
+│   └── src/main/
+│       ├── AndroidManifest.xml
+│       ├── java/com/onyx/bridge/demo/
+│       │   └── MainActivity.java
+│       └── res/
+│           ├── layout/activity_main.xml
+│           └── values/{strings,colors,themes}.xml
+├── docs/
+│   └── INTEGRATION_GUIDE.md       # Step-by-step apktool + smali injection guide
 ├── build.gradle                   # Top-level project build
-├── settings.gradle
+├── settings.gradle                # includes ':app' and ':demo'
 ├── gradle.properties
 ├── gradle/wrapper/
 │   └── gradle-wrapper.properties
@@ -287,6 +299,28 @@ dependencies {
 ```
 
 (For now, copy the source files / prebuilt `.so` files manually as above.)
+
+---
+
+## Integration Guide
+
+For a complete walkthrough on **injecting OnyxBridge into an existing APK
+without source code** (using apktool + smali), see
+[`docs/INTEGRATION_GUIDE.md`](docs/INTEGRATION_GUIDE.md).
+
+The guide covers:
+- Decompiling an APK with apktool
+- Copying `.so` files into `lib/<ABI>/`
+- Adding SMS permissions to `AndroidManifest.xml`
+- Injecting `OnyxBridge.smali` and `OnyxPermissionCallback.smali`
+- Modifying `MainActivity.smali` to call `requestSmsPermissions()`
+- Alternative: custom `Application` class for app-startup init
+- Rebuilding with apktool, zipalign, apksigner
+- Verifying on a device via ADB
+
+The `demo/` module in this repo is a complete reference Android project
+that uses OnyxBridge from scratch — useful as a sanity check before
+tackling the smali injection path.
 
 ---
 
