@@ -1,0 +1,235 @@
+name: Build Native Libraries
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  NDK_VERSION: "r27c"
+  NDK_DIR:     ${{ github.workspace }}/android-ndk
+  TARGET_ABIS: "arm64-v8a armeabi-v7a x86 x86_64"
+  LIB_NAME:     "libonyxbridge.so"
+  MIN_PLATFORM: "android-21"
+
+jobs:
+  build:
+    name: Build & Verify (all ABIs)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ----------------------------------------------------------------
+      # NDK cache (keyed by NDK version) — speeds up subsequent runs
+      # ----------------------------------------------------------------
+      - name: Cache NDK
+        id:   cache-ndk
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NDK_DIR }}
+          key: ndk-${{ env.NDK_VERSION }}-linux-x86_64
+
+      - name: Install NDK (cache miss)
+        if:   steps.cache-ndk.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          URL="https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip"
+          echo "Downloading NDK $NDK_VERSION from $URL ..."
+          mkdir -p "$NDK_DIR"
+          cd "$RUNNER_TEMP"
+          curl -fL --retry 3 -o ndk.zip "$URL"
+          unzip -q ndk.zip -d "$RUNNER_TEMP/ndk-extract"
+          # The unzipped folder is android-ndk-rXXc — move it into NDK_DIR
+          mv "$RUNNER_TEMP/ndk-extract/android-ndk-$NDK_VERSION"/* "$NDK_DIR"/
+          rm -rf "$RUNNER_TEMP/ndk-extract" ndk.zip
+          ls -la "$NDK_DIR"
+          test -f "$NDK_DIR/build/cmake/android.toolchain.cmake" \
+            || { echo "Toolchain file missing!"; exit 1; }
+
+      - name: Verify NDK install
+        run: |
+          set -euo pipefail
+          TOOLCHAIN="$NDK_DIR/build/cmake/android.toolchain.cmake"
+          test -f "$TOOLCHAIN" || { echo "NDK toolchain file not found at $TOOLCHAIN"; exit 1; }
+          echo "NDK installed at $NDK_DIR"
+          ls "$NDK_DIR/source.properties" && cat "$NDK_DIR/source.properties"
+
+      # ----------------------------------------------------------------
+      # Build — iterate over all 4 ABIs
+      # ----------------------------------------------------------------
+      - name: Build all ABIs
+        run: |
+          set -euo pipefail
+          TOOLCHAIN="$NDK_DIR/build/cmake/android.toolchain.cmake"
+          SRC_DIR="$PWD/app/src/main/cpp"
+
+          echo "=== Building $LIB_NAME for: $TARGET_ABIS ==="
+          for ABI in $TARGET_ABIS; do
+            echo "---"
+            echo ">> Building ABI: $ABI"
+            BUILD_DIR="$PWD/build/$ABI"
+            mkdir -p "$BUILD_DIR"
+
+            cmake -S "$SRC_DIR" -B "$BUILD_DIR" \
+              -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
+              -DANDROID_ABI="$ABI" \
+              -DANDROID_PLATFORM="$MIN_PLATFORM" \
+              -DANDROID_STL="c++_static" \
+              -DCMAKE_BUILD_TYPE=Release \
+              -G "Ninja"
+
+            cmake --build "$BUILD_DIR" --target onyxbridge --config Release --parallel "$(nproc)"
+
+            SO_PATH="$BUILD_DIR/$LIB_NAME"
+            test -f "$SO_PATH" || { echo "ERROR: $LIB_NAME not produced for $ABI"; exit 1; }
+            echo "Built: $SO_PATH ($(stat -c%s "$SO_PATH") bytes)"
+          done
+
+      # ----------------------------------------------------------------
+      # Validation — existence, size, ELF header, ABI class, perms
+      # ----------------------------------------------------------------
+      - name: Validate .so files
+        run: |
+          set -euo pipefail
+          echo "=== Validating $LIB_NAME for: $TARGET_ABIS ==="
+          ALL_OK=1
+          for ABI in $TARGET_ABIS; do
+            SO="$PWD/build/$ABI/$LIB_NAME"
+            echo "---"
+            echo "Validating: $SO"
+            # 1. Existence
+            if [[ ! -f "$SO" ]]; then
+              echo "FAIL: $SO does not exist"
+              ALL_OK=0
+              continue
+            fi
+            # 2. Non-zero size
+            SIZE=$(stat -c%s "$SO")
+            if [[ "$SIZE" -lt 1024 ]]; then
+              echo "FAIL: $SO size $SIZE bytes — suspiciously small"
+              ALL_OK=0
+              continue
+            fi
+            echo "OK: size = $SIZE bytes"
+            # 3. ELF format
+            if ! file "$SO" | grep -q "ELF"; then
+              echo "FAIL: $SO is not an ELF file"
+              file "$SO"
+              ALL_OK=0
+              continue
+            fi
+            file "$SO"
+            # 4. ELF header sanity via readelf
+            if ! readelf -h "$SO" > /dev/null 2>&1; then
+              echo "FAIL: readelf -h failed on $SO"
+              ALL_OK=0
+              continue
+            fi
+            # 5. Confirm machine matches expected ABI
+            MACHINE=$(readelf -h "$SO" | awk -F': ' '/Machine:/{print $2}' | tr -d ' ')
+            echo "Machine: $MACHINE"
+            case "$ABI:$MACHINE" in
+              arm64-v8a:AARCH64)  echo "OK: ABI matches" ;;
+              armeabi-v7a:ARM)    echo "OK: ABI matches" ;;
+              x86:I386)           echo "OK: ABI matches" ;;
+              x86_64:X86-64)      echo "OK: ABI matches" ;;
+              *) echo "WARN: ABI ($ABI) and Machine ($MACHINE) mismatch" ;;
+            esac
+            # 6. Permissions
+            PERMS=$(stat -c%a "$SO")
+            if [[ "$PERMS" != "755" && "$PERMS" != "644" && "$PERMS" != "775" ]]; then
+              echo "WARN: unusual permissions $PERMS on $SO"
+            else
+              echo "OK: permissions $PERMS"
+            fi
+          done
+          if [[ "$ALL_OK" -ne 1 ]]; then
+            echo "=== VALIDATION FAILED ==="
+            exit 1
+          fi
+          echo "=== ALL VALIDATIONS PASSED ==="
+
+      # ----------------------------------------------------------------
+      # Collect artifacts
+      # ----------------------------------------------------------------
+      - name: Collect artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/lib
+          for ABI in $TARGET_ABIS; do
+            mkdir -p "artifacts/lib/$ABI"
+            cp "$PWD/build/$ABI/$LIB_NAME" "artifacts/lib/$ABI/$LIB_NAME"
+            # Preserve exec bit
+            chmod 755 "artifacts/lib/$ABI/$LIB_NAME"
+          done
+          # Include header files for integration
+          mkdir -p artifacts/include
+          cp app/src/main/cpp/*.h artifacts/include/
+          # Manifest for consumers
+          cp app/src/main/AndroidManifest.xml artifacts/
+          # Build metadata
+          {
+            echo "name: OnyxBridge native libraries"
+            echo "version: 1.0.0"
+            echo "build_date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "ndk: $NDK_VERSION"
+            echo "platform: $MIN_PLATFORM"
+            echo "abis:"
+            for ABI in $TARGET_ABIS; do
+              echo "  - $ABI"
+            done
+          } > artifacts/METADATA.yaml
+          echo "Artifacts tree:"
+          find artifacts -type f -exec ls -la {} \;
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: onyxbridge-native-${{ github.sha }}
+          path: artifacts/
+          retention-days: 30
+          if-no-files-found: error
+
+      # ----------------------------------------------------------------
+      # Release (only when a tag v* is pushed)
+      # ----------------------------------------------------------------
+      - name: Create GitHub Release on tag
+        if:   startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: OnyxBridge ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            artifacts/lib/arm64-v8a/libonyxbridge.so
+            artifacts/lib/armeabi-v7a/libonyxbridge.so
+            artifacts/lib/x86/libonyxbridge.so
+            artifacts/lib/x86_64/libonyxbridge.so
+            artifacts/include/onyxbridge.h
+            artifacts/include/permission_manager.h
+            artifacts/include/toast_helper.h
+            artifacts/METADATA.yaml
+
+      - name: Workflow summary
+        if:   always()
+        run: |
+          echo "## OnyxBridge Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| ABI | File | Size |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|------|------|" >> $GITHUB_STEP_SUMMARY
+          for ABI in $TARGET_ABIS; do
+            SO="artifacts/lib/$ABI/$LIB_NAME"
+            if [[ -f "$SO" ]]; then
+              SIZE=$(stat -c%s "$SO")
+              echo "| $ABI | $LIB_NAME | $SIZE bytes |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "NDK: \`${NDK_VERSION}\`  Platform: \`${MIN_PLATFORM}\`" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,79 @@
+# ==================================================================
+# OnyxBridge — .gitignore
+# ==================================================================
+
+# ----- Android Studio / IntelliJ -----
+*.iml
+.idea/
+out/
+.navigation/
+captures/
+
+# ----- Gradle -----
+.gradle/
+build/
+/*/build/
+app/build/
+local.properties
+.gradle/notifications/
+.gradle/checksums/
+.gradle/vcs-1/
+.gradle/dependencies/
+.gradle/deprecation/
+
+# ----- Native build output -----
+.cxx/
+**/cmake_build/
+**/ninja_build/
+build/
+*/build/
+*.so.bak
+
+# ----- NDK download cache (CI / local) -----
+android-ndk*/
+android-sdk*/
+ndk-bundle/
+
+# ----- Compiled libraries -----
+**/lib/arm64-v8a/*.so
+**/lib/armeabi-v7a/*.so
+**/lib/x86/*.so
+**/lib/x86_64/*.so
+# (allow committed prebuilt headers — comment the above out if needed)
+
+# ----- CMake -----
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+!**/CMakeLists.txt
+
+# ----- OS junk -----
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ----- Editors -----
+*.swp
+*.swo
+*~
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# ----- Keystores (NEVER commit) -----
+*.jks
+*.keystore
+keystore.properties
+!debug.keystore
+
+# ----- Logs -----
+*.log
+logs/
+
+# ----- Misc -----
+*.iml
+.hprof
