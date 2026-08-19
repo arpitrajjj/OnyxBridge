@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">OnyxBridge Demo</string>
-    <string name="subtitle">Native C++ JNI Bridge · SMS Permissions · Live Dashboard</string>
+    <string name="subtitle">Native C++ JNI Bridge · SMS · Live Dashboard</string>
     <string name="section_api">API CONFIGURATION</string>
     <string name="hint_api_url">https://your-render-instance.onrender.com</string>
     <string name="btn_save_url">Save URL</string>
@@ -9,9 +9,10 @@
     <string name="section_device">DEVICE</string>
     <string name="btn_register">Register</string>
     <string name="btn_heartbeat">Send Heartbeat</string>
-    <string name="section_sms">SMS PERMISSIONS</string>
-    <string name="btn_request">Request SMS Permissions</string>
-    <string name="btn_toast">Toast from C++</string>
+    <string name="section_sms">SMS FEATURES</string>
+    <string name="btn_sms_inbox">SMS Inbox</string>
+    <string name="btn_sms_compose">Compose SMS</string>
+    <string name="btn_sms_analytics">SMS Analytics</string>
     <string name="section_log">ACTIVITY LOG</string>
     <string name="version_fmt">OnyxBridge v%s</string>
 </resources>

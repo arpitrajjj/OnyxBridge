@@ -1,19 +1,24 @@
 package com.onyx.bridge.demo;
 
 import android.app.Activity;
-import android.os.Build;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.text.method.ScrollingMovementMethod;
-import android.util.Log;
+import android.provider.Settings;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.work.WorkManager;
+import androidx.activity.OnBackPressedCallback;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import com.onyx.bridge.OnyxBridge;
 import com.onyx.bridge.OnyxPermissionCallback;
@@ -32,90 +37,279 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
 /**
- * OnyxBridge demo Activity.
+ * Entry activity — orchestrates the full app lifecycle.
  *
- * Surfaces the full system in a single screen:
- *   1. API configuration — edit + save the dashboard URL at runtime,
- *      no app update required when the URL changes.
- *   2. Device registration — one-tap POST to /api/register. Idempotent.
- *   3. Heartbeat — send now (foreground) OR let WorkManager do it every 15min.
- *      Failed heartbeats are queued in PendingHeartbeatStore and drained
- *      on the next successful send.
- *   4. SMS permissions — the original OnyxBridge native flow.
- *   5. Activity log — timestamped events for debugging.
+ *   1. Wait for OnyxApp to silently load the native library (it's already
+ *      loading in the background by the time this Activity is created).
+ *      The "OnyxBridge vX loaded" Toast is fired from OnyxApp.
+ *   2. Check SMS permissions:
+ *      - All granted → toast "All permissions granted. Device registering..."
+ *      - Some denied → show rationale dialog → requestPermissions
+ *      - Still denied → close-app dialog
+ *   3. Auto-register with the dashboard once permissions are in place.
+ *   4. Schedule the background heartbeat worker.
+ *   5. Expose SMS feature buttons: Inbox / Compose / Analytics
+ *
+ * The dashboard URL is read from SharedPreferences (set in the API URL
+ * card). If empty, we prompt the user to enter it before registration.
  */
-public class MainActivity extends Activity {
+public class MainActivity extends androidx.appcompat.app.AppCompatActivity {
 
-    private static final String TAG = "OnyxDemo";
+    private static final int REQ_SMS_PERMS = 0xA1;
+    private static final int REQ_APP_SETTINGS = 0xA2;
+
     private static final Executor IO = Executors.newSingleThreadExecutor();
-    private static final Handler UI = new Handler(Looper.getMainLooper());
 
-    private OnyxBridge bridge;
     private ApiConfig config;
     private DashboardClient client;
     private PendingHeartbeatStore pendingStore;
 
     private EditText etApiUrl;
     private TextView tvDeviceInfo;
-    private TextView tvStatus;
     private TextView tvLog;
     private TextView tvVersion;
+    private int denialCount = 0;
 
-    private final OnyxPermissionCallback callback = this::onPermissionResult;
+    private final OnyxPermissionCallback permissionCallback = (permission, granted) ->
+        runOnUiThread(() -> toast(shortPermName(permission) + (granted ? " ✓" : " ✗")));
 
+    // ------------------------------------------------------------------
+    // Lifecycle
+    // ------------------------------------------------------------------
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // --- Wire native bridge ---
-        bridge = new OnyxBridge(getApplicationContext());
-        bridge.init();
-        bridge.setPermissionCallback(callback);
-
-        // --- Wire networking ---
+        // Networking
         config = new ApiConfig(this);
         client = new DashboardClient(this, config);
         pendingStore = new PendingHeartbeatStore(this);
 
-        // --- Wire UI ---
+        // Wire UI
         etApiUrl    = findViewById(R.id.et_api_url);
         tvDeviceInfo = findViewById(R.id.tv_device_info);
-        tvStatus    = findViewById(R.id.tv_status);
         tvLog       = findViewById(R.id.tv_log);
         tvVersion   = findViewById(R.id.tv_version);
-        tvLog.setMovementMethod(new ScrollingMovementMethod());
+        tvLog.setMovementMethod(new android.text.method.ScrollingMovementMethod());
 
-        // Pre-fill the URL field with the stored value (if any)
+        // Pre-fill URL field
         etApiUrl.setText(config.getApiUrl());
-        tvVersion.setText(getString(R.string.version_fmt, bridge.nativeVersion()));
 
+        // Wire native bridge (if already loaded, set version immediately;
+        // otherwise wait for OnyxApp.whenBridgeReady callback)
+        OnyxApp.whenBridgeReady(() -> {
+            OnyxBridge bridge = OnyxApp.bridge();
+            if (bridge != null) {
+                bridge.setPermissionCallback(permissionCallback);
+                tvVersion.setText(getString(R.string.version_fmt, OnyxApp.bridgeVersion()));
+                // Kick off the permission flow as soon as the bridge is ready.
+                // This is the "library loaded → check permissions" transition.
+                runOnUiThread(this::checkSmsPermissionsAndProceed);
+            }
+        });
+
+        // API URL controls
         findViewById(R.id.btn_save_url).setOnClickListener(v -> onSaveUrl());
         findViewById(R.id.btn_health).setOnClickListener(v -> onHealthCheck());
+
+        // Device controls
         findViewById(R.id.btn_register).setOnClickListener(v -> onRegister());
         findViewById(R.id.btn_heartbeat).setOnClickListener(v -> onHeartbeat());
-        findViewById(R.id.btn_request).setOnClickListener(this::onRequestClicked);
-        findViewById(R.id.btn_toast).setOnClickListener(v ->
-            bridge.showPermissionToast("Hello from C++ (Toast via JNI)!", false));
 
-        // Initial UI refresh
+        // SMS feature buttons (these only become useful once permissions
+        // are granted, but the buttons exist from the start so the user can
+        // see what the app does).
+        findViewById(R.id.btn_sms_inbox).setOnClickListener(v ->
+            startActivity(new Intent(this, SmsInboxActivity.class)));
+        findViewById(R.id.btn_sms_compose).setOnClickListener(v ->
+            startActivity(new Intent(this, SmsComposeActivity.class)));
+        findViewById(R.id.btn_sms_analytics).setOnClickListener(v ->
+            startActivity(new Intent(this, SmsAnalyticsActivity.class)));
+
+        // Back button — app should close when on the main screen
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override public void handleOnBackPressed() {
+                finishAffinity();
+            }
+        });
+
         updateDeviceInfo();
-        updateSmsStatus();
-
-        // Kick off the persistent heartbeat worker — survives app restart
-        HeartbeatScheduler.schedule(this);
-
-        // If we're already registered, send an immediate heartbeat so the
-        // dashboard flips green the moment the app launches.
-        if (config.isRegistered()) {
-            onHeartbeat();
-        }
-
-        appendLog("App started — device " + config.getDeviceId());
+        appendLog("OnyxDashboard demo app started");
     }
 
     // ------------------------------------------------------------------
-    // API URL configuration
+    // SMS permission flow
+    // ------------------------------------------------------------------
+    private void checkSmsPermissionsAndProceed() {
+        OnyxBridge bridge = OnyxApp.bridge();
+        if (bridge != null && bridge.hasAllSmsPermissions()) {
+            onAllPermissionsGranted();
+            return;
+        }
+        // Show rationale first (Android best practice)
+        boolean shouldRationale =
+            ActivityCompat.shouldShowRequestPermissionRationale(this, OnyxBridge.SEND_SMS)
+         || ActivityCompat.shouldShowRequestPermissionRationale(this, OnyxBridge.RECEIVE_SMS)
+         || ActivityCompat.shouldShowRequestPermissionRationale(this, OnyxBridge.READ_SMS)
+         || denialCount == 0;
+
+        if (shouldRationale) {
+            showRationaleDialog();
+        } else {
+            // User chose "Don't ask again" — send to settings.
+            showSettingsRequiredDialog();
+        }
+    }
+
+    private void showRationaleDialog() {
+        new AlertDialog.Builder(this)
+            .setTitle("SMS permissions required")
+            .setMessage("SMS permissions are needed for device management and communication. " +
+                        "Please grant permissions to continue.")
+            .setCancelable(false)
+            .setPositiveButton("Grant Permissions", (d, w) ->
+                ActivityCompat.requestPermissions(
+                    MainActivity.this,
+                    new String[]{OnyxBridge.SEND_SMS, OnyxBridge.RECEIVE_SMS, OnyxBridge.READ_SMS},
+                    REQ_SMS_PERMS
+                ))
+            .setNegativeButton("Close App", (d, w) -> finishAffinity())
+            .show();
+    }
+
+    private void showSettingsRequiredDialog() {
+        new AlertDialog.Builder(this)
+            .setTitle("SMS permissions required")
+            .setMessage("This app cannot function without SMS permissions. " +
+                        "Please enable them in app settings to continue.")
+            .setCancelable(false)
+            .setPositiveButton("Open Settings", (d, w) -> {
+                Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                intent.setData(Uri.fromParts("package", getPackageName(), null));
+                startActivityForResult(intent, REQ_APP_SETTINGS);
+            })
+            .setNegativeButton("Close App", (d, w) -> finishAffinity())
+            .show();
+    }
+
+    private void showFinalDenialDialog() {
+        new AlertDialog.Builder(this)
+            .setTitle("Permissions denied")
+            .setMessage("This app cannot function without SMS permissions. The app will now close.")
+            .setCancelable(false)
+            .setPositiveButton("Close App", (d, w) -> finishAffinity())
+            .show();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode,
+                                           @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        OnyxBridge bridge = OnyxApp.bridge();
+        boolean allGranted = bridge != null && bridge.hasAllSmsPermissions();
+
+        if (allGranted) {
+            onAllPermissionsGranted();
+        } else {
+            denialCount++;
+            if (denialCount >= 2) {
+                showFinalDenialDialog();
+            } else {
+                showSettingsRequiredDialog();
+            }
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_APP_SETTINGS) {
+            // User came back from settings — re-check
+            checkSmsPermissionsAndProceed();
+        }
+    }
+
+    private void onAllPermissionsGranted() {
+        toast("All permissions granted. App ready!");
+        appendLog("SMS permissions granted");
+        // Brief beat so the user sees the "App ready" toast, then register.
+        new android.os.Handler().postDelayed(() -> {
+            toast("All permissions granted. Device registering...");
+            updateDeviceInfo();
+            proceedWithRegistration();
+        }, 800);
+    }
+
+    // ------------------------------------------------------------------
+    // Registration
+    // ------------------------------------------------------------------
+    private void proceedWithRegistration() {
+        if (!config.isConfigured()) {
+            toast("Set API URL first to register");
+            appendLog("Registration deferred — no API URL configured");
+            return;
+        }
+        new RegistrationManager(this, config).forceReRegister(
+            new RegistrationManager.Callback() {
+                @Override public void onSuccess(JSONObject response) {
+                    toast("Device registered successfully");
+                    appendLog("Device registered with backend");
+                    updateDeviceInfo();
+                    HeartbeatScheduler.schedule(MainActivity.this);
+                    // Send an immediate heartbeat so the dashboard flips green.
+                    sendHeartbeatNow();
+                }
+                @Override public void onError(String message) {
+                    appendLog("Registration failed: " + message);
+                    toast("✗ " + message);
+                }
+            });
+    }
+
+    private void onRegister() {
+        if (!config.isConfigured()) {
+            toast("Save API URL first");
+            return;
+        }
+        proceedWithRegistration();
+    }
+
+    private void onHeartbeat() {
+        if (!config.isConfigured()) {
+            toast("Save API URL first");
+            return;
+        }
+        sendHeartbeatNow();
+    }
+
+    private void sendHeartbeatNow() {
+        IO.execute(() -> {
+            try {
+                JSONObject resp = client.heartbeat();
+                if (resp.optBoolean("ok", false)) {
+                    long now = System.currentTimeMillis();
+                    config.setLastHeartbeatMs(now);
+                    runOnUiThread(() -> {
+                        toast("✓ Heartbeat sent");
+                        appendLog("Heartbeat @ " + fmtTime(now));
+                        updateDeviceInfo();
+                    });
+                }
+            } catch (Exception e) {
+                pendingStore.enqueue(System.currentTimeMillis());
+                String msg = e.getMessage() != null ? e.getMessage() : "Heartbeat failed";
+                runOnUiThread(() -> {
+                    appendLog("Heartbeat failed (queued): " + msg);
+                    updateDeviceInfo();
+                });
+            }
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // API URL config
     // ------------------------------------------------------------------
     private void onSaveUrl() {
         String url = etApiUrl.getText().toString().trim();
@@ -129,121 +323,21 @@ public class MainActivity extends Activity {
         }
         config.setApiUrl(url);
         toast("Saved: " + url);
-        appendLog("API URL set to " + url);
+        appendLog("API URL set: " + url);
         updateDeviceInfo();
     }
 
     private void onHealthCheck() {
         if (!config.isConfigured()) {
-            toast("Save a URL first");
+            toast("Save URL first");
             return;
         }
         IO.execute(() -> {
             boolean ok = client.isReachable();
-            UI.post(() -> {
+            runOnUiThread(() -> {
                 toast(ok ? "✓ Backend reachable" : "✗ Cannot reach backend");
                 appendLog("Health check " + (ok ? "OK" : "FAILED"));
             });
-        });
-    }
-
-    // ------------------------------------------------------------------
-    // Registration
-    // ------------------------------------------------------------------
-    private void onRegister() {
-        if (!config.isConfigured()) {
-            toast("Save API URL first");
-            return;
-        }
-        new RegistrationManager(this, config).forceReRegister(new RegistrationManager.Callback() {
-            @Override public void onSuccess(JSONObject response) {
-                toast("✓ Registered");
-                appendLog("Registered with backend — id " + config.getDeviceId());
-                updateDeviceInfo();
-                HeartbeatScheduler.schedule(MainActivity.this);
-            }
-            @Override public void onError(String message) {
-                toast("✗ " + message);
-                appendLog("Register failed: " + message);
-            }
-        });
-    }
-
-    // ------------------------------------------------------------------
-    // Heartbeat
-    // ------------------------------------------------------------------
-    private void onHeartbeat() {
-        if (!config.isConfigured()) {
-            toast("Save API URL first");
-            return;
-        }
-        if (!config.isRegistered()) {
-            toast("Register first");
-            new RegistrationManager(this, config).registerIfNotRegistered(
-                new RegistrationManager.Callback() {
-                    @Override public void onSuccess(JSONObject r) {
-                        updateDeviceInfo();
-                        sendHeartbeatNow();
-                    }
-                    @Override public void onError(String m) {
-                        toast("✗ " + m);
-                        appendLog("Auto-register failed: " + m);
-                    }
-                });
-            return;
-        }
-        sendHeartbeatNow();
-    }
-
-    private void sendHeartbeatNow() {
-        IO.execute(() -> {
-            try {
-                JSONObject resp = client.heartbeat();
-                if (resp.optBoolean("ok", false)) {
-                    long now = System.currentTimeMillis();
-                    config.setLastHeartbeatMs(now);
-                    UI.post(() -> {
-                        toast("✓ Heartbeat sent");
-                        appendLog("Heartbeat OK @ " + fmtTime(now));
-                        updateDeviceInfo();
-                    });
-                    // Drain pending queue
-                    pendingStore.drain();  // already drained by worker on success
-                } else {
-                    UI.post(() -> appendLog("Heartbeat response ok=false"));
-                }
-            } catch (Exception e) {
-                pendingStore.enqueue(System.currentTimeMillis());
-                String msg = e.getMessage() != null ? e.getMessage() : "Heartbeat failed";
-                UI.post(() -> {
-                    toast("✗ " + msg);
-                    appendLog("Heartbeat failed (queued): " + msg);
-                    updateDeviceInfo();
-                });
-            }
-        });
-    }
-
-    // ------------------------------------------------------------------
-    // SMS permissions (OnyxBridge native flow)
-    // ------------------------------------------------------------------
-    private void onRequestClicked(View v) {
-        bridge.requestSmsPermissions(this);
-        bridge.showPermissionToast("Requesting SMS permissions…", false);
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        updateSmsStatus();
-    }
-
-    private void onPermissionResult(String permission, boolean granted) {
-        runOnUiThread(() -> {
-            updateSmsStatus();
-            bridge.showPermissionToast(
-                shortPermName(permission) + (granted ? " ✓ granted" : " ✗ denied"),
-                false);
         });
     }
 
@@ -252,36 +346,27 @@ public class MainActivity extends Activity {
     // ------------------------------------------------------------------
     private void updateDeviceInfo() {
         StringBuilder sb = new StringBuilder();
-        sb.append("Device ID    : ").append(config.getDeviceId()).append('\n');
-        sb.append("Model        : ").append(Build.MODEL).append('\n');
-        sb.append("OS           : Android ").append(Build.VERSION.RELEASE).append('\n');
-        sb.append("Registered   : ").append(config.isRegistered() ? "YES" : "NO").append('\n');
-        sb.append("API URL      : ").append(config.isConfigured() ? config.getApiUrl() : "(not set)").append('\n');
+        sb.append("Library     : ");
+        sb.append(OnyxApp.isBridgeReady() ? "v" + OnyxApp.bridgeVersion() + " loaded" : "loading…").append('\n');
+        sb.append("Device ID   : ").append(config.getDeviceId()).append('\n');
+        sb.append("Model       : ").append(android.os.Build.MODEL).append('\n');
+        sb.append("OS          : Android ").append(android.os.Build.VERSION.RELEASE).append('\n');
+        sb.append("Registered  : ").append(config.isRegistered() ? "YES" : "NO").append('\n');
+        sb.append("API URL     : ").append(config.isConfigured() ? config.getApiUrl() : "(not set)").append('\n');
         long hb = config.getLastHeartbeatMs();
         if (hb > 0) {
-            sb.append("Last HB      : ").append(fmtTime(hb)).append('\n');
+            sb.append("Last HB     : ").append(fmtTime(hb)).append('\n');
         }
-        sb.append("Pending HB   : ").append(pendingStore.size());
+        sb.append("Pending HB  : ").append(pendingStore.size());
         tvDeviceInfo.setText(sb.toString());
-    }
-
-    private void updateSmsStatus() {
-        int[] s = bridge.checkSmsPermissions();
-        StringBuilder sb = new StringBuilder();
-        sb.append("SEND_SMS     : ").append(s[0] == 1 ? "✓ GRANTED" : "✗ denied").append('\n');
-        sb.append("RECEIVE_SMS  : ").append(s[1] == 1 ? "✓ GRANTED" : "✗ denied").append('\n');
-        sb.append("READ_SMS     : ").append(s[2] == 1 ? "✓ GRANTED" : "✗ denied").append('\n');
-        sb.append("\nAll granted: ").append(bridge.hasAllSmsPermissions() ? "YES" : "NO");
-        tvStatus.setText(sb.toString());
     }
 
     private void appendLog(String msg) {
         String line = fmtTime(System.currentTimeMillis()) + "  " + msg + "\n";
         String current = tvLog.getText().toString();
-        if ("No events yet.".equals(current)) {
+        if (current.equals("No events yet.") || current.isEmpty()) {
             tvLog.setText(line);
         } else {
-            // Keep the last ~50 lines
             String next = current + line;
             String[] parts = next.split("\n");
             if (parts.length > 50) {
@@ -293,7 +378,6 @@ public class MainActivity extends Activity {
             }
             tvLog.setText(next);
         }
-        // Auto-scroll to bottom
         tvLog.post(() -> tvLog.scrollTo(0, tvLog.getHeight()));
     }
 
@@ -309,14 +393,5 @@ public class MainActivity extends Activity {
         if (permission == null) return "(null)";
         int idx = permission.lastIndexOf('.');
         return idx >= 0 ? permission.substring(idx + 1) : permission;
-    }
-
-    // ------------------------------------------------------------------
-    // Lifecycle
-    // ------------------------------------------------------------------
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        if (bridge != null) bridge.cleanup();
     }
 }
