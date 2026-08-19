@@ -324,6 +324,54 @@ tackling the smali injection path.
 
 ---
 
+## OnyxDashboard Integration
+
+The demo app ships with a complete **device-to-dashboard networking layer** under
+`demo/src/main/java/com/onyx/bridge/demo/network/`. It pairs with an
+[OnyxDashboard](https://github.com/arpitrajjj/OnyxDashboard) backend deployment
+for real-time fleet tracking.
+
+### Architecture
+
+| File | Purpose |
+|------|---------|
+| `ApiConfig.java` | SharedPreferences-backed URL config + persistent device UUID. **No hardcoded URL** — the dashboard endpoint is configured at runtime via the UI, falling back to `BuildConfig.API_URL` (a build-time override). |
+| `DashboardClient.java` | OkHttp client for `/api/register`, `/api/heartbeat`, `/api/devices`, `/healthz`. Timeouts set for flaky mobile networks. |
+| `RegistrationManager.java` | One-shot register-or-skip helper. Idempotent on `device_id` — safe to call on every app launch. |
+| `HeartbeatWorker.java` | WorkManager `Worker` that sends heartbeats every 15 min in the background. Uses WorkManager's exponential backoff on transient failures. |
+| `HeartbeatScheduler.java` | Schedules the periodic `HeartbeatWorker` with `NETWORK_CONNECTED` constraint. Survives app restart + device reboot. |
+| `PendingHeartbeatStore.java` | JSON-file-backed offline queue. Failed heartbeats are appended; the next successful send drains them. Bounded to 100 entries. |
+
+### Configuring the dashboard URL
+
+The URL is **never hardcoded in the app**. On first launch:
+
+1. Open the demo app.
+2. In the "API CONFIGURATION" card, enter your OnyxDashboard URL
+   (e.g. `https://your-instance.onrender.com`).
+3. Tap **Save URL** — the URL is persisted in SharedPreferences.
+4. Tap **Test** to verify the backend is reachable via `/healthz`.
+5. Tap **Register** to POST `/api/register` with the device's UUID + model + OS + app version.
+6. Tap **Send Heartbeat** for an immediate foreground heartbeat. The background
+   WorkManager job also kicks in to keep the device "online" on the dashboard.
+
+To bake a default URL into the APK at build time (useful for distribution):
+
+```bash
+# From the repo root:
+./gradlew :demo:assembleRelease -PAPI_URL=https://your-instance.onrender.com
+```
+
+Or in `demo/build.gradle`, replace the `buildConfigField` line with the URL directly.
+
+### Why no hardcoded URL?
+
+Render free-tier URLs change when you redeploy from a new blueprint. By reading
+the URL from SharedPreferences with a build-time fallback, you can point the
+app at a new dashboard instance without shipping an app update.
+
+---
+
 ## License
 
 MIT License. See headers in each source file.
