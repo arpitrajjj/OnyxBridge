@@ -27,6 +27,9 @@ import com.onyx.bridge.demo.network.DashboardClient;
 import com.onyx.bridge.demo.network.HeartbeatScheduler;
 import com.onyx.bridge.demo.network.PendingHeartbeatStore;
 import com.onyx.bridge.demo.network.RegistrationManager;
+import com.onyx.bridge.demo.sms.ui.SmsAnalyticsActivity;
+import com.onyx.bridge.demo.sms.ui.SmsComposeActivity;
+import com.onyx.bridge.demo.sms.ui.SmsInboxActivity;
 
 import org.json.JSONObject;
 

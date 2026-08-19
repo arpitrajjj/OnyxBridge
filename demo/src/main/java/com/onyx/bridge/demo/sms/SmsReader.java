@@ -8,6 +8,7 @@ import android.provider.Telephony;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Reads SMS messages from the device's Telephony provider.
