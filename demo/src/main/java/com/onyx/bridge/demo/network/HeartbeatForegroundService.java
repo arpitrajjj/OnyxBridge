@@ -36,7 +36,10 @@ public class HeartbeatForegroundService extends Service {
     private static final String TAG = "OnyxFgHeartbeat";
     private static final String CHANNEL_ID = "onyx_heartbeat";
     private static final int NOTIFICATION_ID = 0xA1;
-    private static final long INTERVAL_MS = 30_000L;
+    // 2-second cadence so the dashboard's 5-second heartbeat timeout flips
+    // the device to "offline" within ~5s of the foreground service being
+    // killed — fast enough for the user to see the status change live.
+    private static final long INTERVAL_MS = 2_000L;
 
     private final Executor IO = Executors.newSingleThreadExecutor();
     private final Handler tick = new Handler(Looper.getMainLooper());

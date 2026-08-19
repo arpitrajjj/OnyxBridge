@@ -12,98 +12,46 @@
         android:padding="24dp"
         android:gravity="center_horizontal">
 
-        <!-- Logo / hero -->
+        <!-- Logo -->
         <View
             android:layout_width="80dp"
             android:layout_height="80dp"
-            android:layout_marginTop="48dp"
+            android:layout_marginTop="120dp"
             android:background="@drawable/ic_logo"
-            android:contentDescription="OnyxBridge logo" />
+            android:contentDescription="OnyxApp logo" />
 
+        <!-- The single, required welcome text -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="OnyxBridge"
-            android:textSize="32sp"
-            android:textColor="@color/accent"
-            android:textStyle="bold"
-            android:layout_marginTop="20dp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Welcome to OnyxBridge"
-            android:textSize="18sp"
+            android:text="Welcome to OnyxApp"
+            android:textSize="28sp"
             android:textColor="@color/text"
-            android:layout_marginTop="8dp" />
+            android:textStyle="bold"
+            android:layout_marginTop="24dp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Tap below to grant SMS permissions, register this device on the dashboard, and start the live heartbeat service."
-            android:textSize="13sp"
+            android:text="Loading library and requesting permissions…"
+            android:textSize="12sp"
             android:textColor="@color/text_dim"
-            android:gravity="center"
-            android:layout_marginTop="12dp"
-            android:layout_marginBottom="32dp"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp" />
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="48dp" />
 
-        <!-- Primary CTA -->
-        <Button
-            android:id="@+id/btn_start"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:text="Grant permissions &amp; start"
-            android:backgroundTint="@color/accent"
-            android:textColor="@android:color/white"
-            android:textStyle="bold"
-            android:textSize="14sp"
-            android:layout_marginBottom="32dp" />
-
-        <!-- Status -->
+        <!-- Activity log (kept small so the welcome stays the focus) -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@color/card_bg"
-            android:padding="16dp"
-            android:layout_marginBottom="16dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="STATUS"
-                android:textSize="10sp"
-                android:textColor="@color/text_dim"
-                android:textStyle="bold"
-                android:letterSpacing="0.1" />
-
-            <TextView
-                android:id="@+id/tv_status"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:fontFamily="monospace"
-                android:textSize="11sp"
-                android:textColor="@color/text"
-                android:text="Ready." />
-        </LinearLayout>
-
-        <!-- Activity log -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@color/card_bg"
-            android:padding="16dp"
-            android:layout_marginBottom="16dp">
+            android:padding="14dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="ACTIVITY LOG"
-                android:textSize="10sp"
+                android:textSize="9sp"
                 android:textColor="@color/text_dim"
                 android:textStyle="bold"
                 android:letterSpacing="0.1" />
@@ -117,7 +65,7 @@
                 android:textSize="10sp"
                 android:textColor="@color/text_dim"
                 android:text="No events yet."
-                android:maxLines="10"
+                android:maxLines="12"
                 android:scrollbars="vertical" />
         </LinearLayout>
 
