@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">OnyxBridge Demo</string>
+    <string name="app_name">OnyxBridge</string>
     <string name="subtitle">Native C++ JNI Bridge · SMS · Live Dashboard</string>
     <string name="section_api">API CONFIGURATION</string>
     <string name="hint_api_url">https://your-render-instance.onrender.com</string>

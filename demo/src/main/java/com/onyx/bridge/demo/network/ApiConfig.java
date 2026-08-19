@@ -26,6 +26,16 @@ public final class ApiConfig {
     public ApiConfig(Context context) {
         this.prefs = context.getApplicationContext()
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        // Seed SharedPreferences with the build-time BuildConfig.API_URL on
+        // first launch so the user never has to type a URL. They can still
+        // override via the UI later if needed.
+        String stored = prefs.getString(KEY_API_URL, null);
+        if ((stored == null || stored.isEmpty()) && com.onyx.bridge.demo.BuildConfig.API_URL != null) {
+            String url = com.onyx.bridge.demo.BuildConfig.API_URL.trim().replaceAll("/+$", "");
+            if (!url.isEmpty()) {
+                prefs.edit().putString(KEY_API_URL, url).apply();
+            }
+        }
     }
 
     /** Returns the API base URL (no trailing slash), e.g. "https://onyxdash.onrender.com". */

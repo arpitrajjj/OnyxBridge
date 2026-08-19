@@ -75,19 +75,16 @@ public class OnyxApp extends Application {
                 // Constructing OnyxBridge triggers its static initializer
                 // which calls System.loadLibrary(). Doing this on a worker
                 // thread keeps the main thread free for UI inflation.
+                //
+                // NOTE: We deliberately do NOT show the "OnyxBridge loaded"
+                // Toast here. The user asked for that toast to fire only
+                // AFTER the SMS permissions are granted, so MainActivity
+                // owns the toast + register flow.
                 OnyxBridge b = new OnyxBridge(getApplicationContext());
                 b.init();
                 bridge = b;
                 bridgeVersion = b.nativeVersion();
                 bridgeReady = true;
-
-                UI.post(() -> {
-                    Toast.makeText(
-                        OnyxApp.this,
-                        "OnyxBridge v" + bridgeVersion + " loaded",
-                        Toast.LENGTH_SHORT
-                    ).show();
-                });
             } catch (Throwable t) {
                 UI.post(() -> Toast.makeText(
                     OnyxApp.this,

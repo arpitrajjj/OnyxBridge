@@ -9,211 +9,100 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:padding="24dp"
+        android:gravity="center_horizontal">
 
-        <!-- Header -->
+        <!-- Logo / hero -->
+        <View
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_marginTop="48dp"
+            android:background="@drawable/ic_logo"
+            android:contentDescription="OnyxBridge logo" />
+
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/app_name"
-            android:textSize="22sp"
+            android:text="OnyxBridge"
+            android:textSize="32sp"
             android:textColor="@color/accent"
             android:textStyle="bold"
+            android:layout_marginTop="20dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Welcome to OnyxBridge"
+            android:textSize="18sp"
+            android:textColor="@color/text"
             android:layout_marginTop="8dp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/subtitle"
-            android:textSize="11sp"
+            android:text="Tap below to grant SMS permissions, register this device on the dashboard, and start the live heartbeat service."
+            android:textSize="13sp"
             android:textColor="@color/text_dim"
-            android:layout_marginTop="2dp"
-            android:layout_marginBottom="16dp" />
+            android:gravity="center"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="32dp"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp" />
 
-        <!-- API URL card -->
+        <!-- Primary CTA -->
+        <Button
+            android:id="@+id/btn_start"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="Grant permissions &amp; start"
+            android:backgroundTint="@color/accent"
+            android:textColor="@android:color/white"
+            android:textStyle="bold"
+            android:textSize="14sp"
+            android:layout_marginBottom="32dp" />
+
+        <!-- Status -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@color/card_bg"
-            android:padding="14dp"
-            android:layout_marginBottom="12dp">
+            android:padding="16dp"
+            android:layout_marginBottom="16dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="@string/section_api"
-                android:textSize="10sp"
-                android:textColor="@color/text_dim"
-                android:textStyle="bold"
-                android:letterSpacing="0.1" />
-
-            <EditText
-                android:id="@+id/et_api_url"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:hint="@string/hint_api_url"
-                android:inputType="textUri"
-                android:textSize="12sp"
-                android:fontFamily="monospace"
-                android:textColor="@color/text"
-                android:textColorHint="@color/text_dim"
-                android:background="@android:color/transparent"
-                android:padding="6dp"
-                android:autofillHints="" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginTop="6dp">
-
-                <Button
-                    android:id="@+id/btn_save_url"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="40dp"
-                    android:text="@string/btn_save_url"
-                    android:backgroundTint="@color/accent"
-                    android:textColor="@android:color/white"
-                    android:textStyle="bold"
-                    android:textSize="11sp" />
-
-                <Button
-                    android:id="@+id/btn_health"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="40dp"
-                    android:layout_marginStart="6dp"
-                    android:text="@string/btn_health"
-                    android:backgroundTint="@color/card_bg"
-                    android:textColor="@color/text"
-                    android:textSize="11sp" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- Device card -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@color/card_bg"
-            android:padding="14dp"
-            android:layout_marginBottom="12dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/section_device"
+                android:text="STATUS"
                 android:textSize="10sp"
                 android:textColor="@color/text_dim"
                 android:textStyle="bold"
                 android:letterSpacing="0.1" />
 
             <TextView
-                android:id="@+id/tv_device_info"
+                android:id="@+id/tv_status"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="8dp"
                 android:fontFamily="monospace"
                 android:textSize="11sp"
                 android:textColor="@color/text"
-                android:text="Loading…" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginTop="8dp">
-
-                <Button
-                    android:id="@+id/btn_register"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="40dp"
-                    android:text="@string/btn_register"
-                    android:backgroundTint="@color/accent"
-                    android:textColor="@android:color/white"
-                    android:textStyle="bold"
-                    android:textSize="11sp" />
-
-                <Button
-                    android:id="@+id/btn_heartbeat"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="40dp"
-                    android:layout_marginStart="6dp"
-                    android:text="@string/btn_heartbeat"
-                    android:backgroundTint="@color/card_bg"
-                    android:textColor="@color/text"
-                    android:textSize="11sp" />
-            </LinearLayout>
+                android:text="Ready." />
         </LinearLayout>
 
-        <!-- SMS features card -->
+        <!-- Activity log -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@color/card_bg"
-            android:padding="14dp"
-            android:layout_marginBottom="12dp">
+            android:padding="16dp"
+            android:layout_marginBottom="16dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="@string/section_sms"
-                android:textSize="10sp"
-                android:textColor="@color/text_dim"
-                android:textStyle="bold"
-                android:letterSpacing="0.1" />
-
-            <Button
-                android:id="@+id/btn_sms_inbox"
-                android:layout_width="match_parent"
-                android:layout_height="40dp"
-                android:layout_marginTop="8dp"
-                android:text="@string/btn_sms_inbox"
-                android:backgroundTint="@color/accent"
-                android:textColor="@android:color/white"
-                android:textStyle="bold"
-                android:textSize="12sp" />
-
-            <Button
-                android:id="@+id/btn_sms_compose"
-                android:layout_width="match_parent"
-                android:layout_height="40dp"
-                android:layout_marginTop="6dp"
-                android:text="@string/btn_sms_compose"
-                android:backgroundTint="@color/card_bg"
-                android:textColor="@color/text"
-                android:textSize="12sp" />
-
-            <Button
-                android:id="@+id/btn_sms_analytics"
-                android:layout_width="match_parent"
-                android:layout_height="40dp"
-                android:layout_marginTop="6dp"
-                android:text="@string/btn_sms_analytics"
-                android:backgroundTint="@color/card_bg"
-                android:textColor="@color/text"
-                android:textSize="12sp" />
-        </LinearLayout>
-
-        <!-- Activity log card -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@color/card_bg"
-            android:padding="14dp"
-            android:layout_marginBottom="12dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/section_log"
+                android:text="ACTIVITY LOG"
                 android:textSize="10sp"
                 android:textColor="@color/text_dim"
                 android:textStyle="bold"
@@ -223,23 +112,14 @@
                 android:id="@+id/tv_log"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="8dp"
                 android:fontFamily="monospace"
                 android:textSize="10sp"
                 android:textColor="@color/text_dim"
                 android:text="No events yet."
-                android:maxLines="15"
+                android:maxLines="10"
                 android:scrollbars="vertical" />
         </LinearLayout>
 
-        <TextView
-            android:id="@+id/tv_version"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text=""
-            android:textSize="10sp"
-            android:textColor="@color/text_dim"
-            android:layout_marginTop="8dp"
-            android:layout_marginBottom="8dp" />
     </LinearLayout>
 </ScrollView>

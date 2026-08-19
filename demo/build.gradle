@@ -17,10 +17,10 @@ android {
             abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'
         }
 
-        // Build-time default API URL — empty by default so the user must
-        // enter their dashboard URL in the app's config screen at runtime.
-        // Override via gradle property: -PAPI_URL="https://your-render.onrender.com"
-        def apiFromProperty = project.findProperty("API_URL") ?: ""
+        // Hardcoded dashboard URL — the user said "won't change". The user
+        // can still override at build time via -PAPI_URL=... but this default
+        // ships in the APK so there's no manual URL entry required.
+        def apiFromProperty = project.findProperty("API_URL") ?: "https://onyxdashboard-7hi7.onrender.com"
         buildConfigField "String", "API_URL", "\"${apiFromProperty}\""
     }
 

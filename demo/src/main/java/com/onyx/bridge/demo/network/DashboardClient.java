@@ -90,6 +90,18 @@ public final class DashboardClient {
     }
 
     // ------------------------------------------------------------------
+    // SMS — post an incoming/outgoing SMS to the dashboard
+    // ------------------------------------------------------------------
+    public JSONObject postSms(JSONObject body) throws Exception {
+        if (!config.isConfigured()) {
+            throw new IllegalStateException("API URL not configured");
+        }
+        String path = "/api/devices/" + config.getDeviceId() + "/sms";
+        Response r = doRequest("POST", path, body);
+        return parseResponse(r);
+    }
+
+    // ------------------------------------------------------------------
     // Health probe — used by WorkManager before scheduling heartbeats
     // ------------------------------------------------------------------
     public boolean isReachable() {
